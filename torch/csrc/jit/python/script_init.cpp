@@ -940,24 +940,19 @@ void initJitScriptBindings(PyObject* module) {
   special_magic_methods.emplace(
       "__str__",
       [](const Object& self,
-         py::args args,
+         const py::args& args,
          const py::kwargs& kwargs) -> py::object {
         auto method = self.find_method("__str__");
         if (!method) {
           return py::str("ScriptObject <" + self.type()->str() + ">");
         }
-        return invokeScriptMethodFromPython(
-            *method,
-            // NOLINTNEXTLINE(performance-move-const-arg)
-            std::move(args),
-            // NOLINTNEXTLINE(performance-move-const-arg)
-            std::move(kwargs));
+        return invokeScriptMethodFromPython(*method, args, kwargs);
       });
 
   special_magic_methods.emplace(
       "__repr__",
       [](const Object& self,
-         py::args args,
+         const py::args& args,
          const py::kwargs& kwargs) -> py::object {
         auto method = self.find_method("__repr__");
         if (!method) {
@@ -965,12 +960,7 @@ void initJitScriptBindings(PyObject* module) {
           ss << std::hex << static_cast<const void*>(&self);
           return py::str("<torch.ScriptObject object at " + ss.str() + ">");
         }
-        return invokeScriptMethodFromPython(
-            *method,
-            // NOLINTNEXTLINE(performance-move-const-arg)
-            std::move(args),
-            // NOLINTNEXTLINE(performance-move-const-arg)
-            std::move(kwargs));
+        return invokeScriptMethodFromPython(*method, args, kwargs);
       });
 
   for (const char* mm_name : magic_method_names) {
@@ -980,7 +970,9 @@ void initJitScriptBindings(PyObject* module) {
       object_class.def(
           mm_name,
           [mm_name](
-              const Object& self, py::args args, const py::kwargs& kwargs) {
+              const Object& self,
+              const py::args& args,
+              const py::kwargs& kwargs) {
             auto method = self.find_method(mm_name);
             if (!method) {
               std::string msg = fmt::format(
@@ -989,8 +981,7 @@ void initJitScriptBindings(PyObject* module) {
                   self.type()->str());
               throw c10::NotImplementedError(msg);
             }
-            return invokeScriptMethodFromPython(
-                *method, std::move(args), kwargs);
+            return invokeScriptMethodFromPython(*method, args, kwargs);
           });
     }
   }
@@ -1142,7 +1133,7 @@ void initJitScriptBindings(PyObject* module) {
              const ResolutionCallback& rcb) {
             const auto self = ModuleSelf(std::move(concreteType));
             m._ivalue()->compilation_unit()->define(
-                *m.type()->name(), script, pythonResolver(rcb), &self);
+                m.type()->name(), script, pythonResolver(rcb), &self);
             didFinishEmitModule(m);
           })
       .def(
@@ -1281,7 +1272,7 @@ void initJitScriptBindings(PyObject* module) {
               consts["c" + std::to_string(i)] = constant;
               i += 1;
             }
-            return std::make_tuple(pp.str(), consts);
+            return std::make_tuple(pp.str(), std::move(consts));
           })
       .def("apply", &Module::apply)
       .def("__copy__", &Module::copy)
@@ -1447,10 +1438,7 @@ void initJitScriptBindings(PyObject* module) {
             auto strongPtr = py::cast<StrongFunctionPtr>(args[0]);
             Function& callee = *strongPtr.function_;
             py::object result = invokeScriptFunctionFromPython(
-                callee,
-                // NOLINTNEXTLINE(performance-move-const-arg)
-                tuple_slice(std::move(args), 1),
-                kwargs);
+                callee, tuple_slice(std::move(args), 1), kwargs);
             return result;
             END_HANDLE_TH_ERRORS_PYBIND
           })
@@ -1597,7 +1585,7 @@ void initJitScriptBindings(PyObject* module) {
               consts["c" + std::to_string(i)] = constant;
               i += 1;
             }
-            return std::make_tuple(pp.str(), consts);
+            return std::make_tuple(pp.str(), std::move(consts));
           })
       .def_property_readonly("owner", &Method::owner)
       .def_property_readonly("raw_owner", [](const Method& self) {
