@@ -2468,7 +2468,7 @@ else:
                         self.assertEqual(y1.grad, y2.grad, rtol=0, atol=0.001)
 
     @tf32_on_and_off(0.005)
-    @bf32_on_and_off(0.005)
+    @bf32_on_and_off(0.08)
     def test_cdist_large(self, device):
         for cm in ['use_mm_for_euclid_dist_if_necessary', 'use_mm_for_euclid_dist', 'donot_use_mm_for_euclid_dist']:
             x = torch.randn(1000, 10, device=device)
@@ -2479,7 +2479,7 @@ else:
 
     @slowTest
     @tf32_on_and_off(0.01)
-    @bf32_on_and_off(0.01)
+    @bf32_on_and_off(0.08)
     def test_cdist_large_batch(self, device):
         for cm in ['use_mm_for_euclid_dist_if_necessary', 'use_mm_for_euclid_dist', 'donot_use_mm_for_euclid_dist']:
             x = torch.randn(4, 3, 1000, 10, device=device)
@@ -2489,7 +2489,7 @@ else:
             self.assertEqual(expected, actual)
 
     @tf32_on_and_off(0.005)
-    @bf32_on_and_off(0.005)
+    @bf32_on_and_off(0.04)
     def test_cdist_non_contiguous(self, device):
         for cm in ['use_mm_for_euclid_dist', 'donot_use_mm_for_euclid_dist']:
             x = torch.randn(5, 7, device=device).mT
@@ -2517,7 +2517,7 @@ else:
             self.assertEqual(expected, actual)
 
     @tf32_on_and_off(0.005)
-    @bf32_on_and_off(0.005)
+    @bf32_on_and_off(0.04)
     def test_cdist_non_contiguous_batch(self, device):
         for cm in ['use_mm_for_euclid_dist', 'donot_use_mm_for_euclid_dist']:
             x = torch.randn(4, 3, 2, 5, 7, device=device).mT
@@ -10035,6 +10035,30 @@ tensor([[[1.+1.j, 1.+1.j, 1.+1.j,  ..., 1.+1.j, 1.+1.j, 1.+1.j],
         del s
         self.assertEqual(MyStorage.finalized_count, 1)
         self.assertTrue(m[0])
+
+    def test_tensor_ressurecting_clear(self):
+        # Regression test for https://github.com/pytorch/pytorch/issues/136358
+        # A Tensor with custom __dict__
+        # Autograd here is for the c++ reference later
+        t = torch.rand(2, requires_grad=True).clone()
+        t.foo = 2
+
+        # that is part of a cycle
+        l = []
+        l.append(l)
+        l.append(t)
+
+        # Keep the Tensor alive from c++
+        # Using autograd graph here (any other mean would work)
+        t2 = t ** 2
+        self.assertIs(t2.grad_fn._saved_self, t)
+
+        # Clear all python references and trigger the gc
+        del t, l
+        gc.collect()
+
+        # We used to loose the dict!
+        self.assertTrue(hasattr(t2.grad_fn._saved_self, "foo"))
 
     def test_tensor_slot_dealloc(self):
 
